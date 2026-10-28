@@ -1,5 +1,5 @@
 import { Stack } from 'expo-router';
-import { FavoritesProvider } from '../../src/context/FavoritesContext'; // 👈 Ruta desde app/
+import { FavoritesProvider } from '@/features/favorites/context/FavoritesContext';
 
 export default function RootLayout() {
   return (

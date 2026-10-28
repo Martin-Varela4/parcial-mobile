@@ -6,5 +6,6 @@ export const colors = {
   muted: '#8891B5',   // texto secundario
   amber: '#FFC53D',   // acento cálido — precios
   teal: '#2EC4B6',    // acento frío — categorías / estado activo
-};
- 
+} as const;
+
+export type ColorName = keyof typeof colors;

@@ -8,31 +8,20 @@ import {
   View,
   Alert,
 } from 'react-native';
-import { products } from '../../data/products';
-// Importamos el hook global
-import { useFavorites } from '../../context/FavoritesContext'; 
-
-const colors = {
-  bg: '#101426',
-  bgAlt: '#1B2140',
-  line: '#2A3157',
-  ink: '#F4F1FF',
-  muted: '#8891B5',
-  amber: '#FFC53D',
-  teal: '#2EC4B6',
-}; 
+import { mockProducts } from '@/features/products/data/mockProducts';
+import { useFavorites } from '@/features/favorites/context/FavoritesContext';
+import { colors } from '@/theme/colors';
+import { formatCurrency } from '@/utils/formatters';
 
 export default function ProductDetail() {
-  const { id } = useLocalSearchParams();
+  const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const producto = products.find((item) => item.id === Number(id)); 
+  const producto = mockProducts.find((item) => item.id === Number(id));
 
-  // ⚡ Consumimos la lógica global de favoritos
-  const { toggleFavorite, isFavorite } = useFavorites(); 
+  const { toggleFavorite, isFavorite } = useFavorites();
 
-  // Si el producto no existe, devolvemos la vista de error
   if (!producto) {
-    return ( 
+    return (
       <View style={styles.center}>
         <Text style={styles.notFound}>No encontramos este producto</Text>
         <Pressable onPress={() => router.back()} style={styles.backChip}>
@@ -40,20 +29,19 @@ export default function ProductDetail() {
         </Pressable>
       </View>
     );
-  } 
+  }
 
-  // Comprobamos de manera persistente si este producto actual está en la lista global
-  const elProductoEsFavorito = isFavorite(producto.id); 
+  const elProductoEsFavorito = isFavorite(producto.id);
 
   const handleToggleFavorite = () => {
     toggleFavorite(producto.id);
-  }; 
+  };
 
   const handleBuy = () => {
     Alert.alert("Compra Iniciada", `Añadiste ${producto.nombre} al carrito.`);
-  }; 
+  };
 
-  return ( 
+  return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.scrollContent}>
       <View style={styles.imageWrap}>
         <Image source={producto.imagen} style={styles.image} />
@@ -61,20 +49,18 @@ export default function ProductDetail() {
           <Text style={styles.backChipText}>‹ Volver</Text>
         </Pressable>
       </View>
- 
+
       <View style={styles.sheet}>
         <View style={styles.tag}>
           <Text style={styles.tagText}>{producto.categoria}</Text>
         </View>
         <Text style={styles.name}>{producto.nombre}</Text>
-        <Text style={styles.price}>
-          \$ {producto.precio.toLocaleString('es-AR')}
-        </Text>
+        <Text style={styles.price}>{formatCurrency(producto.precio)}</Text>
         <Text style={styles.description}>{producto.descripcion}</Text>
 
         <View style={styles.actionsRow}>
-          <Pressable 
-            onPress={handleToggleFavorite} 
+          <Pressable
+            onPress={handleToggleFavorite}
             style={[styles.favButton, elProductoEsFavorito && styles.favButtonActive]}
           >
             <Text style={styles.favButtonText}>
@@ -89,7 +75,7 @@ export default function ProductDetail() {
       </View>
     </ScrollView>
   );
-} 
+}
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },

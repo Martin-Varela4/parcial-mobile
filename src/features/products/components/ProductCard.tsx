@@ -1,18 +1,8 @@
-// components/ProductCard.jsx
 import { useRouter } from 'expo-router';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
-//import { colors } from 'mi-ecommerce/src/theme/colors.js';
-
-const colors = {
-  bg: '#101426',      // fondo base — azul noche
-  bgAlt: '#1B2140',   // fondo alterno — franjas del catálogo y hoja de detalle
-  line: '#2A3157',    // líneas divisorias sutiles
-  ink: '#F4F1FF',     // texto principal sobre fondo oscuro
-  muted: '#8891B5',   // texto secundario
-  amber: '#FFC53D',   // acento cálido — precios
-  teal: '#2EC4B6',    // acento frío — categorías / estado activo
-};
- 
+import { colors } from '@/theme/colors';
+import { ProductCardProps } from '../types';
+import { formatCurrency } from '@/utils/formatters';
 
 export default function ProductCard({
   id,
@@ -21,7 +11,7 @@ export default function ProductCard({
   categoria,
   imagen,
   alt = false,
-}) {
+}: ProductCardProps) {
   const router = useRouter();
 
   function abrirDetalle() {
@@ -42,7 +32,7 @@ export default function ProductCard({
           <Text style={styles.tagText}>{categoria}</Text>
         </View>
         <Text style={styles.name}>{nombre}</Text>
-        <Text style={styles.price}>$ {precio.toLocaleString('es-AR')}</Text>
+        <Text style={styles.price}>{formatCurrency(precio)}</Text>
       </View>
     </Pressable>
   );

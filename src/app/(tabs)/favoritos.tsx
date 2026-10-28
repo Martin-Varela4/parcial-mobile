@@ -1,36 +1,36 @@
 import { StyleSheet, Text, View, FlatList, Image, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
-import { products } from '../../data/products'; // Asegúrate de que la ruta a tus datos sea correcta
-import { useFavorites } from '../../context/FavoritesContext'; // Tu nuevo contexto global
-
-const colors = {
-  bg: '#101426',      
-  bgAlt: '#1B2140',   
-  line: '#2A3157',    
-  ink: '#F4F1FF',     
-  muted: '#8891B5',   
-  amber: '#FFC53D',   
-  teal: '#2EC4B6',    
-};
+import { mockProducts } from '@/features/products/data/mockProducts';
+import { useFavorites } from '@/features/favorites/context/FavoritesContext';
+import { colors } from '@/theme/colors';
+import { formatCurrency } from '@/utils/formatters';
+import { Product } from '@/features/products/types';
 
 export default function Favoritos() {
   const router = useRouter();
-  const { favorites } = useFavorites(); // ⚡ Obtenemos la lista de IDs guardados
+  const { favorites } = useFavorites();
 
-  // Filtrar el array original de productos para dejar solo los que su ID esté en favoritos
-  const misProductosFavoritos = products.filter((item) => favorites.includes(item.id));
+  const misProductosFavoritos = mockProducts.filter((item) =>
+    favorites.includes(item.id)
+  );
 
-  // Renderizado de cada tarjeta de favorito de forma compacta e integrada
-  const renderItem = ({ item }) => (
-    <Pressable 
-      style={styles.card} 
-      onPress={() => router.push(`/product/${item.id}`)} // Te redirige al detalle del producto
+  const renderItem = ({ item }: { item: Product }) => (
+    <Pressable
+      style={styles.card}
+      onPress={() =>
+        router.push({
+          pathname: '/producto/[id]',
+          params: { id: String(item.id) },
+        })
+      }
     >
       <Image source={item.imagen} style={styles.cardImage} />
       <View style={styles.cardInfo}>
-        <Text style={styles.cardName} numberOfLines={1}>{item.nombre}</Text>
+        <Text style={styles.cardName} numberOfLines={1}>
+          {item.nombre}
+        </Text>
         <Text style={styles.cardCategory}>{item.categoria}</Text>
-        <Text style={styles.cardPrice}>\$ {item.precio.toLocaleString('es-AR')}</Text>
+        <Text style={styles.cardPrice}>{formatCurrency(item.precio)}</Text>
       </View>
     </Pressable>
   );
@@ -38,7 +38,7 @@ export default function Favoritos() {
   return (
     <View style={styles.page}>
       <Text style={styles.titleScreen}>Mis Favoritos</Text>
-      
+
       {misProductosFavoritos.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Text style={styles.title}>Favoritos</Text>
@@ -56,12 +56,12 @@ export default function Favoritos() {
     </View>
   );
 }
- 
+
 const styles = StyleSheet.create({
   page: {
     flex: 1,
     backgroundColor: colors.bg,
-    paddingTop: 60, // Espacio superior para que no se pegue al notch
+    paddingTop: 60,
   },
   titleScreen: {
     fontSize: 24,
@@ -79,8 +79,6 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 20, fontWeight: '700', color: colors.ink },
   subtitle: { fontSize: 14, color: colors.muted, textAlign: 'center' },
-  
-  // Estilos de la lista de productos
   list: { flex: 1 },
   listContent: { paddingHorizontal: 24, gap: 12, paddingBottom: 24 },
   card: {

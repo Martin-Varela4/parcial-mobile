@@ -1,29 +1,16 @@
 import { FlatList, StyleSheet, Text, View } from 'react-native';
-import ProductCard from '../../components/ProductCard';
-import { products } from '../../data/products';
-// import { colors } from '../../../theme/colors';
+import ProductCard from '@/features/products/components/ProductCard';
+import { mockProducts } from '@/features/products/data/mockProducts';
+import { colors } from '@/theme/colors';
 
-const colors = {
-  bg: '#101426',      // fondo base — azul noche
-  bgAlt: '#1B2140',   // fondo alterno — franjas del catálogo y hoja de detalle
-  line: '#2A3157',    // líneas divisorias sutiles
-  ink: '#F4F1FF',     // texto principal sobre fondo oscuro
-  muted: '#8891B5',   // texto secundario
-  amber: '#FFC53D',   // acento cálido — precios
-  teal: '#2EC4B6',    // acento frío — categorías / estado activo
-};
-  // 👈 Agrega esto temporalmente
- 
 export default function Catalogo() {
-    console.log("¿Qué hay en products?:", products)
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Catálogo</Text>
       <FlatList
-        data={products}
+        data={mockProducts}
         keyExtractor={(item) => String(item.id)}
         renderItem={({ item, index }) => (
-          
           <ProductCard {...item} alt={index % 2 === 1} />
         )}
         contentContainerStyle={styles.list}
@@ -31,7 +18,7 @@ export default function Catalogo() {
     </View>
   );
 }
- 
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   title: {

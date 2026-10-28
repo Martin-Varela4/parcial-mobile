@@ -21,17 +21,25 @@ export default function ProductCard({
     });
   }
 
+  const imageSource = typeof imagen === 'string' ? { uri: imagen } : imagen;
+
   return (
     <Pressable
       onPress={abrirDetalle}
       style={[styles.row, alt && styles.rowAlt]}
     >
-      <Image source={imagen} style={styles.image} />
+      <Image
+        source={imageSource}
+        style={styles.image}
+        resizeMode="contain"
+      />
       <View style={styles.info}>
         <View style={styles.tag}>
           <Text style={styles.tagText}>{categoria}</Text>
         </View>
-        <Text style={styles.name}>{nombre}</Text>
+        <Text style={styles.name} numberOfLines={2}>
+          {nombre}
+        </Text>
         <Text style={styles.price}>{formatCurrency(precio)}</Text>
       </View>
     </Pressable>
@@ -49,7 +57,12 @@ const styles = StyleSheet.create({
   rowAlt: {
     backgroundColor: colors.bgAlt,
   },
-  image: { width: 96, height: 96, borderRadius: 6 },
+  image: {
+    width: 96,
+    height: 96,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF', // Fondo blanco para imágenes transparentes de FakeStoreAPI
+  },
   info: { flex: 1, gap: 6 },
   tag: {
     alignSelf: 'flex-start',
@@ -59,6 +72,6 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   tagText: { fontSize: 11, fontWeight: '700', color: colors.bg },
-  name: { fontSize: 17, fontWeight: '700', color: colors.ink },
+  name: { fontSize: 16, fontWeight: '700', color: colors.ink, lineHeight: 22 },
   price: { fontSize: 15, fontWeight: '800', color: colors.amber },
 });

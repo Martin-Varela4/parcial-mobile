@@ -5,7 +5,7 @@ export interface Product {
   nombre: string;
   precio: number;
   categoria: string;
-  imagen: ImageSourcePropType;
+  imagen: ImageSourcePropType | string;
   descripcion: string;
 }
 
@@ -14,6 +14,21 @@ export interface ProductCardProps {
   nombre: string;
   precio: number;
   categoria: string;
-  imagen: ImageSourcePropType;
+  imagen: ImageSourcePropType | string;
   alt?: boolean;
+}
+
+export interface FakeStoreRating {
+  rate: number;
+  count: number;
+}
+
+export interface FakeStoreProduct {
+  id: number;
+  title: string;
+  price: number;
+  description: string;
+  category: string;
+  image: string;
+  rating?: FakeStoreRating;
 }

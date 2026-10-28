@@ -1,22 +1,43 @@
 import { mockProducts } from '../data/mockProducts';
-import { Product } from '../types';
+import { FakeStoreProduct, Product } from '../types';
+import { adaptFakeStoreProduct } from '../utils/adapter';
+
+const FAKESTORE_BASE_URL = 'https://fakestoreapi.com';
 
 export const productsService = {
   /**
-   * Obtiene la lista completa de productos.
-   * Actualmente resuelve los datos de prueba locales.
-   * En producción: return apiClient.get<Product[]>(ENDPOINTS.PRODUCTS);
+   * Obtiene la lista de productos desde FakeStoreAPI con fallback a mockProducts.
    */
   async getProducts(): Promise<Product[]> {
-    return Promise.resolve(mockProducts);
+    try {
+      const response = await fetch(`${FAKESTORE_BASE_URL}/products`);
+      if (!response.ok) {
+        throw new Error(`Error HTTP: ${response.status}`);
+      }
+      const data: FakeStoreProduct[] = await response.json();
+      return data.map(adaptFakeStoreProduct);
+    } catch {
+      // Fallback a los datos locales en caso de falla de conexión
+      return mockProducts;
+    }
   },
 
   /**
    * Obtiene un producto por su identificador numérico.
-   * En producción: return apiClient.get<Product>(ENDPOINTS.PRODUCT_DETAIL(id));
+   * Consulta FakeStoreAPI y, si no existe o falla, busca en los datos mock.
    */
   async getProductById(id: number): Promise<Product | undefined> {
-    const product = mockProducts.find((item) => item.id === id);
-    return Promise.resolve(product);
+    try {
+      const response = await fetch(`${FAKESTORE_BASE_URL}/products/${id}`);
+      if (response.ok) {
+        const data: FakeStoreProduct = await response.json();
+        return adaptFakeStoreProduct(data);
+      }
+    } catch {
+      // Continuar al fallback local
+    }
+
+    // Fallback a datos locales
+    return mockProducts.find((item) => item.id === id);
   },
 };

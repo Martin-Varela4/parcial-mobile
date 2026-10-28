@@ -1,24 +1,55 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useMemo } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   Image,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
-  Alert,
 } from 'react-native';
-import { mockProducts } from '@/features/products/data/mockProducts';
 import { useFavorites } from '@/features/favorites/context/FavoritesContext';
+import { mockProducts } from '@/features/products/data/mockProducts';
+import { useFetch } from '@/features/products/hooks/useFetch';
+import { FakeStoreProduct, Product } from '@/features/products/types';
+import { adaptFakeStoreProduct } from '@/features/products/utils/adapter';
 import { colors } from '@/theme/colors';
 import { formatCurrency } from '@/utils/formatters';
 
 export default function ProductDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const producto = mockProducts.find((item) => item.id === Number(id));
+  const numericId = Number(id);
+
+  // Consulta el producto individual desde FakeStoreAPI
+  const {
+    data: remoteProduct,
+    loading,
+  } = useFetch<FakeStoreProduct>(
+    numericId ? `https://fakestoreapi.com/products/${numericId}` : null
+  );
+
+  // Resuelve el producto remoto adaptado o recurre al mock local como fallback
+  const producto: Product | null = useMemo(() => {
+    if (remoteProduct) {
+      return adaptFakeStoreProduct(remoteProduct);
+    }
+    const local = mockProducts.find((item) => item.id === numericId);
+    return local || null;
+  }, [remoteProduct, numericId]);
 
   const { toggleFavorite, isFavorite } = useFavorites();
+
+  if (loading && !producto) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={colors.teal} />
+        <Text style={styles.loadingText}>Cargando detalle...</Text>
+      </View>
+    );
+  }
 
   if (!producto) {
     return (
@@ -41,10 +72,16 @@ export default function ProductDetail() {
     Alert.alert("Compra Iniciada", `Añadiste ${producto.nombre} al carrito.`);
   };
 
+  const imageSource = typeof producto.imagen === 'string' ? { uri: producto.imagen } : producto.imagen;
+
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.scrollContent}>
       <View style={styles.imageWrap}>
-        <Image source={producto.imagen} style={styles.image} />
+        <Image
+          source={imageSource}
+          style={styles.image}
+          resizeMode="contain"
+        />
         <Pressable onPress={() => router.back()} style={styles.backChip}>
           <Text style={styles.backChipText}>‹ Volver</Text>
         </Pressable>
@@ -87,8 +124,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 16,
   },
+  loadingText: { fontSize: 15, fontWeight: '600', color: colors.muted },
   notFound: { fontSize: 17, fontWeight: '700', color: colors.ink },
-  imageWrap: { width: '100%', height: 320 },
+  imageWrap: {
+    width: '100%',
+    height: 320,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
   image: { width: '100%', height: '100%' },
   backChip: {
     position: 'absolute',
@@ -117,7 +162,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   tagText: { fontSize: 11, fontWeight: '700', color: colors.bg },
-  name: { fontSize: 26, fontWeight: '900', color: colors.ink, letterSpacing: -0.5 },
+  name: { fontSize: 22, fontWeight: '900', color: colors.ink, letterSpacing: -0.5, lineHeight: 28 },
   price: { fontSize: 20, fontWeight: '800', color: colors.amber },
   description: { fontSize: 15, lineHeight: 23, color: colors.muted, marginTop: 6, marginBottom: 20 },
   actionsRow: {

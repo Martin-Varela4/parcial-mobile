@@ -1,39 +1,79 @@
-import { StyleSheet, Text, View, FlatList, Image, Pressable } from 'react-native';
+import { useMemo } from 'react';
+import {
+  FlatList,
+  Image,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useRouter } from 'expo-router';
-import { mockProducts } from '@/features/products/data/mockProducts';
 import { useFavorites } from '@/features/favorites/context/FavoritesContext';
+import { mockProducts } from '@/features/products/data/mockProducts';
+import { useFetch } from '@/features/products/hooks/useFetch';
+import { FakeStoreProduct, Product } from '@/features/products/types';
+import { adaptFakeStoreProduct } from '@/features/products/utils/adapter';
 import { colors } from '@/theme/colors';
 import { formatCurrency } from '@/utils/formatters';
-import { Product } from '@/features/products/types';
 
 export default function Favoritos() {
   const router = useRouter();
   const { favorites } = useFavorites();
 
-  const misProductosFavoritos = mockProducts.filter((item) =>
-    favorites.includes(item.id)
-  );
+  // Consulta los productos remotos para poder resolver favoritos agregados desde FakeStoreAPI
+  const {
+    data: rawProducts,
+    loading,
+    refetch,
+  } = useFetch<FakeStoreProduct[]>('https://fakestoreapi.com/products');
 
-  const renderItem = ({ item }: { item: Product }) => (
-    <Pressable
-      style={styles.card}
-      onPress={() =>
-        router.push({
-          pathname: '/producto/[id]',
-          params: { id: String(item.id) },
-        })
-      }
-    >
-      <Image source={item.imagen} style={styles.cardImage} />
-      <View style={styles.cardInfo}>
-        <Text style={styles.cardName} numberOfLines={1}>
-          {item.nombre}
-        </Text>
-        <Text style={styles.cardCategory}>{item.categoria}</Text>
-        <Text style={styles.cardPrice}>{formatCurrency(item.precio)}</Text>
-      </View>
-    </Pressable>
-  );
+  // Consolida productos remotos y locales (evitando duplicaciones por ID)
+  const allAvailableProducts = useMemo(() => {
+    const remote = Array.isArray(rawProducts)
+      ? rawProducts.map(adaptFakeStoreProduct)
+      : [];
+    const map = new Map<number, Product>();
+    mockProducts.forEach((p) => map.set(p.id, p));
+    remote.forEach((p) => map.set(p.id, p));
+    return Array.from(map.values());
+  }, [rawProducts]);
+
+  // Filtra los productos favoritos activos
+  const misProductosFavoritos = useMemo(() => {
+    return allAvailableProducts.filter((item) => favorites.includes(item.id));
+  }, [allAvailableProducts, favorites]);
+
+  const renderItem = ({ item }: { item: Product }) => {
+    const imageSource =
+      typeof item.imagen === 'string' ? { uri: item.imagen } : item.imagen;
+
+    return (
+      <Pressable
+        style={styles.card}
+        onPress={() =>
+          router.push({
+            pathname: '/producto/[id]',
+            params: { id: String(item.id) },
+          })
+        }
+      >
+        <View style={styles.imageContainer}>
+          <Image
+            source={imageSource}
+            style={styles.cardImage}
+            resizeMode="contain"
+          />
+        </View>
+        <View style={styles.cardInfo}>
+          <Text style={styles.cardName} numberOfLines={1}>
+            {item.nombre}
+          </Text>
+          <Text style={styles.cardCategory}>{item.categoria}</Text>
+          <Text style={styles.cardPrice}>{formatCurrency(item.precio)}</Text>
+        </View>
+      </Pressable>
+    );
+  };
 
   return (
     <View style={styles.page}>
@@ -42,7 +82,11 @@ export default function Favoritos() {
       {misProductosFavoritos.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Text style={styles.title}>Favoritos</Text>
-          <Text style={styles.subtitle}>Todavía no guardaste ningún producto.</Text>
+          <Text style={styles.subtitle}>
+            {loading
+              ? 'Verificando productos guardados...'
+              : 'Todavía no guardaste ningún producto.'}
+          </Text>
         </View>
       ) : (
         <FlatList
@@ -51,6 +95,8 @@ export default function Favoritos() {
           renderItem={renderItem}
           contentContainerStyle={styles.listContent}
           style={styles.list}
+          refreshing={loading}
+          onRefresh={refetch}
         />
       )}
     </View>
@@ -80,7 +126,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 20, fontWeight: '700', color: colors.ink },
   subtitle: { fontSize: 14, color: colors.muted, textAlign: 'center' },
   list: { flex: 1 },
-  listContent: { paddingHorizontal: 24, gap: 12, paddingBottom: 24 },
+  listContent: { paddingHorizontal: 24, gap: 12, paddingBottom: 80 },
   card: {
     flexDirection: 'row',
     backgroundColor: colors.bgAlt,
@@ -89,10 +135,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.line,
   },
-  cardImage: {
+  imageContainer: {
     width: 90,
     height: 90,
-    backgroundColor: colors.line,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 6,
+  },
+  cardImage: {
+    width: '100%',
+    height: '100%',
   },
   cardInfo: {
     flex: 1,
@@ -100,7 +153,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 2,
   },
-  cardName: { fontSize: 16, fontWeight: '700', color: colors.ink },
+  cardName: { fontSize: 15, fontWeight: '700', color: colors.ink },
   cardCategory: { fontSize: 12, color: colors.teal, fontWeight: '600' },
   cardPrice: { fontSize: 15, fontWeight: '800', color: colors.amber, marginTop: 4 },
 });

@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import {
+  ActivityIndicator,
   FlatList,
   Image,
   Pressable,
@@ -18,12 +19,13 @@ import { formatCurrency } from '@/utils/formatters';
 
 export default function Favoritos() {
   const router = useRouter();
-  const { favorites } = useFavorites();
+  const { favorites, isFavoritesLoaded } = useFavorites();
 
   // Consulta los productos remotos para poder resolver favoritos agregados desde FakeStoreAPI
   const {
     data: rawProducts,
-    loading,
+    loading: loadingApi,
+    error: errorApi,
     refetch,
   } = useFetch<FakeStoreProduct[]>('https://fakestoreapi.com/products');
 
@@ -79,23 +81,46 @@ export default function Favoritos() {
     <View style={styles.page}>
       <Text style={styles.titleScreen}>Mis Favoritos</Text>
 
-      {misProductosFavoritos.length === 0 ? (
+      {/* CASO 1: Carga inicial del almacenamiento local (AsyncStorage) */}
+      {!isFavoritesLoaded ? (
+        <View style={styles.emptyContainer}>
+          <ActivityIndicator size="large" color={colors.teal} />
+          <Text style={styles.loadingSubtitle}>Cargando favoritos guardados...</Text>
+        </View>
+      ) : favorites.length === 0 ? (
+        /* CASO 2: Ausencia real de favoritos guardados */
         <View style={styles.emptyContainer}>
           <Text style={styles.title}>Favoritos</Text>
-          <Text style={styles.subtitle}>
-            {loading
-              ? 'Verificando productos guardados...'
-              : 'Todavía no guardaste ningún producto.'}
+          <Text style={styles.subtitle}>Todavía no guardaste ningún producto.</Text>
+        </View>
+      ) : loadingApi && misProductosFavoritos.length === 0 ? (
+        /* CASO 3: Hay favoritos guardados, pero los productos remotos están cargando */
+        <View style={styles.emptyContainer}>
+          <ActivityIndicator size="large" color={colors.teal} />
+          <Text style={styles.loadingSubtitle}>
+            Sincronizando {favorites.length} producto{favorites.length === 1 ? '' : 's'} de tus favoritos...
           </Text>
         </View>
+      ) : errorApi && misProductosFavoritos.length === 0 ? (
+        /* CASO 4: Falló la conexión al obtener los productos remotos */
+        <View style={styles.emptyContainer}>
+          <Text style={styles.title}>Error de conexión</Text>
+          <Text style={styles.subtitle}>
+            No pudimos sincronizar tus favoritos guardados ({errorApi}).
+          </Text>
+          <Pressable onPress={refetch} style={styles.retryButton}>
+            <Text style={styles.retryButtonText}>Reintentar</Text>
+          </Pressable>
+        </View>
       ) : (
+        /* CASO 5: Productos favoritos disponibles para renderizar */
         <FlatList
           data={misProductosFavoritos}
           keyExtractor={(item) => item.id.toString()}
           renderItem={renderItem}
           contentContainerStyle={styles.listContent}
           style={styles.list}
-          refreshing={loading}
+          refreshing={loadingApi}
           onRefresh={refetch}
         />
       )}
@@ -125,6 +150,19 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 20, fontWeight: '700', color: colors.ink },
   subtitle: { fontSize: 14, color: colors.muted, textAlign: 'center' },
+  loadingSubtitle: { fontSize: 14, color: colors.muted, textAlign: 'center', marginTop: 8 },
+  retryButton: {
+    marginTop: 12,
+    backgroundColor: colors.teal,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  retryButtonText: {
+    color: colors.bg,
+    fontWeight: '800',
+    fontSize: 14,
+  },
   list: { flex: 1 },
   listContent: { paddingHorizontal: 24, gap: 12, paddingBottom: 80 },
   card: {

@@ -1,27 +1,35 @@
-import { useMemo } from 'react';
+import React, { useCallback, useMemo, useRef } from 'react';
 import {
   ActivityIndicator,
   FlatList,
-  Image,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
 import { useFavorites } from '@/features/favorites/context/FavoritesContext';
+import SwipeableFavoriteCard, {
+  SwipeableFavoriteCardHandle,
+} from '@/features/favorites/components/SwipeableFavoriteCard';
 import { mockProducts } from '@/features/products/data/mockProducts';
 import { useFetch } from '@/features/products/hooks/useFetch';
 import { FakeStoreProduct, Product } from '@/features/products/types';
 import { adaptFakeStoreProduct } from '@/features/products/utils/adapter';
 import { colors } from '@/theme/colors';
-import { formatCurrency } from '@/utils/formatters';
 
 export default function Favoritos() {
-  const router = useRouter();
-  const { favorites, isFavoritesLoaded } = useFavorites();
+  const { favorites, isFavoritesLoaded, toggleFavorite } = useFavorites();
 
-  // Consulta los productos remotos para poder resolver favoritos agregados desde FakeStoreAPI
+  // ── Refs para controlar tarjetas abiertas ────────────────────────────────
+  /**
+   * Mapa de refs de cada SwipeableFavoriteCard, indexado por id de producto.
+   * Permite cerrar la tarjeta que estaba abierta cuando se abre otra.
+   */
+  const cardRefs = useRef<Map<number, SwipeableFavoriteCardHandle>>(new Map());
+  /** Referencia al id de la tarjeta actualmente abierta. */
+  const openCardId = useRef<number | null>(null);
+
+  // ── Productos remotos ────────────────────────────────────────────────────
   const {
     data: rawProducts,
     loading: loadingApi,
@@ -29,7 +37,7 @@ export default function Favoritos() {
     refetch,
   } = useFetch<FakeStoreProduct[]>('https://fakestoreapi.com/products');
 
-  // Consolida productos remotos y locales (evitando duplicaciones por ID)
+  // Consolida productos remotos y locales (sin duplicar por ID).
   const allAvailableProducts = useMemo(() => {
     const remote = Array.isArray(rawProducts)
       ? rawProducts.map(adaptFakeStoreProduct)
@@ -40,42 +48,65 @@ export default function Favoritos() {
     return Array.from(map.values());
   }, [rawProducts]);
 
-  // Filtra los productos favoritos activos
-  const misProductosFavoritos = useMemo(() => {
-    return allAvailableProducts.filter((item) => favorites.includes(item.id));
-  }, [allAvailableProducts, favorites]);
+  // Filtra únicamente los favoritos activos.
+  const misProductosFavoritos = useMemo(
+    () => allAvailableProducts.filter((item) => favorites.includes(item.id)),
+    [allAvailableProducts, favorites]
+  );
 
-  const renderItem = ({ item }: { item: Product }) => {
-    const imageSource =
-      typeof item.imagen === 'string' ? { uri: item.imagen } : item.imagen;
+  // ── Callbacks para la tarjeta ────────────────────────────────────────────
 
-    return (
-      <Pressable
-        style={styles.card}
-        onPress={() =>
-          router.push({
-            pathname: '/producto/[id]',
-            params: { id: String(item.id) },
-          })
-        }
-      >
-        <View style={styles.imageContainer}>
-          <Image
-            source={imageSource}
-            style={styles.cardImage}
-            resizeMode="contain"
-          />
-        </View>
-        <View style={styles.cardInfo}>
-          <Text style={styles.cardName} numberOfLines={1}>
-            {item.nombre}
-          </Text>
-          <Text style={styles.cardCategory}>{item.categoria}</Text>
-          <Text style={styles.cardPrice}>{formatCurrency(item.precio)}</Text>
-        </View>
-      </Pressable>
-    );
-  };
+  /**
+   * Se invoca cuando una tarjeta se abre. Cierra la anterior si existía.
+   */
+  const handleCardOpen = useCallback((id: number) => {
+    if (openCardId.current !== null && openCardId.current !== id) {
+      cardRefs.current.get(openCardId.current)?.close();
+    }
+    openCardId.current = id;
+  }, []);
+
+  /**
+   * Elimina el producto de favoritos llamando a `toggleFavorite`.
+   * La persistencia en AsyncStorage la gestiona el contexto internamente.
+   */
+  const handleDelete = useCallback(
+    (id: number) => {
+      // Limpiar el estado de "abierta" antes de eliminar.
+      if (openCardId.current === id) {
+        openCardId.current = null;
+      }
+      cardRefs.current.delete(id);
+      toggleFavorite(id);
+    },
+    [toggleFavorite]
+  );
+
+  // ── Render de cada item ──────────────────────────────────────────────────
+
+  const renderItem = useCallback(
+    ({ item }: { item: Product }) => {
+      return (
+        <SwipeableFavoriteCard
+          ref={(handle) => {
+            if (handle) {
+              cardRefs.current.set(item.id, handle);
+            } else {
+              cardRefs.current.delete(item.id);
+            }
+          }}
+          item={item}
+          onDelete={handleDelete}
+          onOpen={() => handleCardOpen(item.id)}
+        />
+      );
+    },
+    [handleDelete, handleCardOpen]
+  );
+
+  const keyExtractor = useCallback((item: Product) => item.id.toString(), []);
+
+  // ── UI ───────────────────────────────────────────────────────────────────
 
   return (
     <View style={styles.page}>
@@ -88,21 +119,22 @@ export default function Favoritos() {
           <Text style={styles.loadingSubtitle}>Cargando favoritos guardados...</Text>
         </View>
       ) : favorites.length === 0 ? (
-        /* CASO 2: Ausencia real de favoritos guardados */
+        /* CASO 2: Sin favoritos guardados */
         <View style={styles.emptyContainer}>
           <Text style={styles.title}>Favoritos</Text>
           <Text style={styles.subtitle}>Todavía no guardaste ningún producto.</Text>
         </View>
       ) : loadingApi && misProductosFavoritos.length === 0 ? (
-        /* CASO 3: Hay favoritos guardados, pero los productos remotos están cargando */
+        /* CASO 3: Favoritos guardados, productos remotos cargando */
         <View style={styles.emptyContainer}>
           <ActivityIndicator size="large" color={colors.teal} />
           <Text style={styles.loadingSubtitle}>
-            Sincronizando {favorites.length} producto{favorites.length === 1 ? '' : 's'} de tus favoritos...
+            Sincronizando {favorites.length} producto{favorites.length === 1 ? '' : 's'} de tus
+            favoritos...
           </Text>
         </View>
       ) : errorApi && misProductosFavoritos.length === 0 ? (
-        /* CASO 4: Falló la conexión al obtener los productos remotos */
+        /* CASO 4: Error de conexión */
         <View style={styles.emptyContainer}>
           <Text style={styles.title}>Error de conexión</Text>
           <Text style={styles.subtitle}>
@@ -113,20 +145,29 @@ export default function Favoritos() {
           </Pressable>
         </View>
       ) : (
-        /* CASO 5: Productos favoritos disponibles para renderizar */
+        /* CASO 5: Productos favoritos disponibles */
         <FlatList
           data={misProductosFavoritos}
-          keyExtractor={(item) => item.id.toString()}
+          keyExtractor={keyExtractor}
           renderItem={renderItem}
           contentContainerStyle={styles.listContent}
           style={styles.list}
           refreshing={loadingApi}
           onRefresh={refetch}
+          // Cerrar la tarjeta activa cuando el usuario comienza a hacer scroll.
+          onScrollBeginDrag={() => {
+            if (openCardId.current !== null) {
+              cardRefs.current.get(openCardId.current)?.close();
+              openCardId.current = null;
+            }
+          }}
         />
       )}
     </View>
   );
 }
+
+// ── Estilos ──────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   page: {
@@ -165,33 +206,4 @@ const styles = StyleSheet.create({
   },
   list: { flex: 1 },
   listContent: { paddingHorizontal: 24, gap: 12, paddingBottom: 80 },
-  card: {
-    flexDirection: 'row',
-    backgroundColor: colors.bgAlt,
-    borderRadius: 12,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: colors.line,
-  },
-  imageContainer: {
-    width: 90,
-    height: 90,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 6,
-  },
-  cardImage: {
-    width: '100%',
-    height: '100%',
-  },
-  cardInfo: {
-    flex: 1,
-    padding: 12,
-    justifyContent: 'center',
-    gap: 2,
-  },
-  cardName: { fontSize: 15, fontWeight: '700', color: colors.ink },
-  cardCategory: { fontSize: 12, color: colors.teal, fontWeight: '600' },
-  cardPrice: { fontSize: 15, fontWeight: '800', color: colors.amber, marginTop: 4 },
 });

@@ -6,6 +6,6 @@ export interface UserProfile {
 
 export const DEFAULT_USER: UserProfile = {
   id: 1,
-  name: 'Usuario Demo',
+  name: 'Martín Varela',
   profileImage: null,
 };

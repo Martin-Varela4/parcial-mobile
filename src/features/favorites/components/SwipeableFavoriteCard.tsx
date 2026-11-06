@@ -66,6 +66,8 @@ interface SwipeableFavoriteCardProps {
    * Eleva la sombra y opacidad para feedback visual.
    */
   isDragging?: boolean;
+  /** Deshabilita gestos horizontales y navegación mientras se realiza un reordenamiento. */
+  disabled?: boolean;
 }
 
 // ─── Componente ───────────────────────────────────────────────────────────────
@@ -73,7 +75,7 @@ interface SwipeableFavoriteCardProps {
 const SwipeableFavoriteCard = forwardRef<
   SwipeableFavoriteCardHandle,
   SwipeableFavoriteCardProps
->(({ item, onDelete, onOpen, isDragging = false }, ref) => {
+>(({ item, onDelete, onOpen, isDragging = false, disabled = false }, ref) => {
   const router = useRouter();
 
   /** Desplazamiento horizontal de la tarjeta (negativo = hacia la izquierda). */
@@ -93,6 +95,7 @@ const SwipeableFavoriteCard = forwardRef<
   // ── Gesto de paneo horizontal (swipe-to-delete) ───────────────────────────
 
   const panGesture = Gesture.Pan()
+    .enabled(!disabled)
     /**
      * El pan solo se activa cuando el movimiento horizontal supera 10 pt ANTES
      * de que el movimiento vertical supere 5 pt. Esto cede el control al
@@ -137,16 +140,9 @@ const SwipeableFavoriteCard = forwardRef<
     };
   });
 
-  /** Estilo de elevación cuando la tarjeta está siendo arrastrada. */
-  const dragElevationStyle = useAnimatedStyle(() => ({
-    opacity: isDragging ? 0.92 : 1,
-    shadowOpacity: isDragging ? 0.3 : 0.08,
-    shadowRadius: isDragging ? 12 : 4,
-    elevation: isDragging ? 8 : 2,
-    transform: [
-      { translateX: translateX.value },
-      { scale: isDragging ? 1.03 : 1 },
-    ],
+  /** Estilo animado para el desplazamiento horizontal por swipe-to-delete. */
+  const swipeAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }],
   }));
 
   // ── Eliminar ──────────────────────────────────────────────────────────────
@@ -158,6 +154,7 @@ const SwipeableFavoriteCard = forwardRef<
   // ── Navegación al detalle ─────────────────────────────────────────────────
 
   const handlePress = useCallback(() => {
+    if (disabled) return;
     if (isOpen.value) {
       // Si la tarjeta está abierta, cerrarla en lugar de navegar.
       translateX.value = withSpring(0, SPRING_CONFIG);
@@ -168,7 +165,7 @@ const SwipeableFavoriteCard = forwardRef<
       pathname: '/producto/[id]',
       params: { id: String(item.id) },
     });
-  }, [item.id, router, isOpen, translateX]);
+  }, [item.id, router, isOpen, translateX, disabled]);
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -193,7 +190,7 @@ const SwipeableFavoriteCard = forwardRef<
 
       {/* Tarjeta deslizable */}
       <GestureDetector gesture={panGesture}>
-        <Animated.View style={[styles.card, dragElevationStyle]}>
+        <Animated.View style={[styles.card, swipeAnimatedStyle]}>
           <Pressable
             style={styles.pressableArea}
             onPress={handlePress}

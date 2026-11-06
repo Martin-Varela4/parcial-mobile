@@ -103,25 +103,27 @@ export function FavoritesProvider({ children }: FavoritesProviderProps) {
    * Solo deben pasarse IDs que ya estén en `favorites`; los IDs desconocidos se ignoran.
    */
   const reorderFavorites = (newOrder: number[]): Promise<void> => {
+    // 1. Validar y sanitizar el nuevo orden inmediatamente
+    const currentSet = new Set(favoritesRef.current);
+    const sanitized = newOrder.filter((id) => currentSet.has(id));
+
+    // Añadir al final cualquier ID que esté en current pero que no haya llegado en newOrder
+    favoritesRef.current.forEach((id) => {
+      if (!sanitized.includes(id)) sanitized.push(id);
+    });
+
+    console.log(
+      '[FavoritesContext] reorderFavorites. Nuevo orden:',
+      sanitized
+    );
+
+    // 2. Actualizar estado de React y la ref en memoria INMEDIATAMENTE de forma optimista
+    favoritesRef.current = sanitized;
+    setFavorites(sanitized);
+
+    // 3. Encolar la persistencia ordenada en AsyncStorage sin demorar el estado de UI
     const taskPromise = writeQueueRef.current
       .then(async () => {
-        // Validar que solo se incluyan IDs existentes
-        const currentSet = new Set(favoritesRef.current);
-        const sanitized = newOrder.filter((id) => currentSet.has(id));
-
-        // Añadir al final cualquier ID que esté en current pero que no haya llegado en newOrder
-        favoritesRef.current.forEach((id) => {
-          if (!sanitized.includes(id)) sanitized.push(id);
-        });
-
-        console.log(
-          '[FavoritesContext] reorderFavorites. Nuevo orden:',
-          sanitized
-        );
-
-        favoritesRef.current = sanitized;
-        setFavorites(sanitized);
-
         await favoritesStorage.saveFavorites(sanitized);
       })
       .catch((error) => {

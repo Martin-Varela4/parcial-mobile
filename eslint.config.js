@@ -8,23 +8,20 @@ module.exports = defineConfig([
     ignores: ["dist/*"],
   },
   /**
-   * Las reglas del React Compiler (react-hooks/refs, react-hooks/immutability,
-   * react-hooks/set-state-in-effect) son incompatibles con los patrones de uso
-   * estándar de react-native-reanimated (SharedValue.value = ...) y
-   * react-native-gesture-handler cuando se inicializan gestos en el cuerpo del
-   * componente. Se desactivan solo en los archivos que usan animaciones.
+   * react-native-reanimated utiliza mutaciones de SharedValue (ej. sharedValue.value = ...)
+   * en worklets del UI Thread. El analizador de inmutabilidad estricto del React Compiler
+   * trata cualquier argumento o hook como inmutable y no distingue los SharedValues.
+   * Se deshabilita únicamente la regla de inmutabilidad en los archivos de animación.
+   * Las reglas 'react-hooks/refs' y 'react-hooks/set-state-in-effect' se mantienen activas.
    *
    * Ref: https://react.dev/learn/react-compiler#using-react-compiler-with-libraries
    */
   {
     files: [
       "src/app/(tabs)/favoritos.tsx",
-      "src/features/favorites/components/SwipeableFavoriteCard.tsx",
     ],
     rules: {
-      "react-hooks/refs": "off",
       "react-hooks/immutability": "off",
-      "react-hooks/set-state-in-effect": "off",
     },
   },
 ]);

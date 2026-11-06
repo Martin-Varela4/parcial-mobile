@@ -1,40 +1,42 @@
 /**
  * Favoritos — pantalla principal de productos favoritos.
  *
- * Interacciones:
+ * Interacciones coordinadas:
  *  1. Toque normal      → navegar al detalle del producto.
  *  2. Deslizar ←        → revelar acción de eliminar (swipe-to-delete).
- *  3. Mantener presionado + arrastrar ↕ → reordenar (drag & drop).
- *  4. Scroll vertical normal → se desplaza la lista (sin activar reordenamiento).
+ *  3. Mantener presionado (400ms) + arrastrar ↕ → Drag & Drop con reordenamiento
+ *     reactivo a 60 FPS en UI Thread, desplazamiento de tarjetas vecinas con resorte,
+ *     aterrizaje suave en el slot destino y autoscroll perimetral.
+ *  4. Scroll vertical normal → se desplaza la lista libremente.
  *
- * Implementación del Drag & Drop:
- *  - Se usa un ScrollView para poder desactivar el scroll nativo mientras
- *    el usuario arrastra, evitando conflictos de gestos.
- *  - Gesture.LongPress (minDuration: 400 ms) activa el modo de arrastre.
- *  - Gesture.Pan (simultáneo al LongPress) mueve la tarjeta.
- *  - Cada DraggableRow posee su propio useSharedValue (offsetY).
- *  - Al soltar se calcula la nueva posición y se llama a reorderFavorites.
- *  - `userOrderedIds` guarda el orden decidido por el usuario (solo IDs).
- *    `orderedProducts` se deriva de él via useMemo, sin setState en effects.
- *
- * Compatibilidad: Expo Go (sin código nativo adicional).
+ * Arquitectura:
+ *  - Paso de ranura uniforme (PITCH = 104 pt: 92 pt de tarjeta + 12 pt de gap).
+ *  - SharedValues de Reanimated centralizados en UI thread.
+ *  - Sin lectura de SharedValues durante render (cero advertencias de Reanimated).
+ *  - Sincronización de lista local inmune a carreras de reordenamiento.
+ *  - Persistencia en FavoritesContext + AsyncStorage tras finalizar la animación de resorte.
+ *  - 100% compatible con Expo Go.
  */
 
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  LayoutChangeEvent,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import Animated, {
   runOnJS,
+  scrollTo,
+  SharedValue,
+  useAnimatedRef,
+  useAnimatedScrollHandler,
   useAnimatedStyle,
+  useFrameCallback,
   useSharedValue,
   withSpring,
+  withTiming,
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
@@ -48,126 +50,274 @@ import { FakeStoreProduct, Product } from '@/features/products/types';
 import { adaptFakeStoreProduct } from '@/features/products/utils/adapter';
 import { colors } from '@/theme/colors';
 
-// ─── Constantes ───────────────────────────────────────────────────────────────
+// ─── Constantes geométricas y de animación ─────────────────────────────────────
 
-/** Duración mínima de pulsación para activar el reordenamiento. */
-const LONG_PRESS_MIN_DURATION = 400;
+/** Altura fija de cada tarjeta en puntos. */
+const CARD_HEIGHT = 92;
 
-/** Configuración spring al soltar una tarjeta. */
-const DROP_SPRING = { damping: 22, stiffness: 220, mass: 0.7 };
+/** Separación entre tarjetas en la lista. */
+const CARD_GAP = 12;
 
-// ─── Tipos internos ───────────────────────────────────────────────────────────
+/** Paso total por elemento (slot pitch). */
+const ITEM_PITCH = CARD_HEIGHT + CARD_GAP; // 104 pt
 
-interface ItemLayout {
-  y: number;
-  height: number;
-}
+/** Duración mínima de pulsación prolongada para activar el arrastre. */
+const LONG_PRESS_DURATION = 400; // ms
 
-// ─── Sub-componente: fila arrastrable ─────────────────────────────────────────
+/** Zona perimetral superior/inferior para activar el autoscroll (en px). */
+const SCROLL_EDGE_ZONE = 80;
+
+/** Velocidad máxima de autoscroll en píxeles por frame. */
+const MAX_AUTOSCROLL_SPEED = 14;
+
+/** Configuración de resorte para el desplazamiento de tarjetas vecinas. */
+const SPRING_NEIGHBOR_CONFIG = { damping: 20, stiffness: 220, mass: 0.6 };
+
+/** Configuración de resorte para el aterrizaje de la tarjeta en la ranura. */
+const SPRING_DROP_CONFIG = { damping: 24, stiffness: 240, mass: 0.8 };
+
+// ─── Fila arrastrable (DraggableRow) ───────────────────────────────────────────
 
 interface DraggableRowProps {
   item: Product;
-  isDragging: boolean;
-  /** Notifica al padre que el long press comenzó. */
+  index: number;
+  activeId: SharedValue<number>;
+  activeIndex: SharedValue<number>;
+  hoverIndex: SharedValue<number>;
+  translationY: SharedValue<number>;
+  isDragging: SharedValue<boolean>;
+  isTouchDown: SharedValue<boolean>;
+  autoscrollSpeed: SharedValue<number>;
+  scrollViewScreenY: SharedValue<number>;
+  scrollViewHeight: SharedValue<number>;
+  totalCountShared: SharedValue<number>;
   onDragStart: (id: number) => void;
-  /** Notifica al padre que el arrastre terminó con la posición Y absoluta. */
-  onDragEnd: (id: number, absoluteY: number) => void;
+  onDragEnd: (fromIndex: number, toIndex: number) => void;
+  onDragCancel: () => void;
   onDelete: (id: number) => void;
   onOpen: (id: number) => void;
-  onLayout: (id: number, e: LayoutChangeEvent) => void;
   cardRef: (handle: SwipeableFavoriteCardHandle | null) => void;
+  isThisCardDragging: boolean;
+  isAnyDragging: boolean;
 }
 
-/**
- * Cada DraggableRow posee su propio useSharedValue para el desplazamiento Y.
- * Así el padre nunca toca shared values ajenos (cumple react-hooks/immutability).
- */
 const DraggableRow = React.memo(function DraggableRow({
   item,
+  index,
+  activeId,
+  activeIndex,
+  hoverIndex,
+  translationY,
   isDragging,
+  isTouchDown,
+  autoscrollSpeed,
+  scrollViewScreenY,
+  scrollViewHeight,
+  totalCountShared,
   onDragStart,
   onDragEnd,
+  onDragCancel,
   onDelete,
   onOpen,
-  onLayout,
   cardRef,
+  isThisCardDragging,
+  isAnyDragging,
 }: DraggableRowProps) {
-  const id = item.id;
-  // Owned por esta instancia — ningún prop externo lo modifica.
-  const dragOffsetY = useSharedValue(0);
+  // ── Estilo animado continuo en UI Thread ──────────────────────────────────
+  const animatedRowStyle = useAnimatedStyle(() => {
+    const isThisActive = activeId.value === item.id;
 
-  const draggedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: isDragging ? dragOffsetY.value : 0 }],
-    zIndex: isDragging ? 999 : 1,
-  }));
+    // Caso 1: Esta tarjeta es la que está siendo arrastrada o aterrizando en slot
+    if (isThisActive) {
+      return {
+        transform: [
+          { translateY: translationY.value },
+          { scale: withSpring(isTouchDown.value ? 1.03 : 1, { damping: 18 }) },
+        ],
+        zIndex: 999,
+        elevation: 10,
+        shadowOpacity: 0.3,
+        shadowRadius: 10,
+      };
+    }
 
-  // Refs para que los worklets capturen siempre los callbacks más recientes
-  // sin necesitar recrear el objeto Gesture.
-  const onDragStartRef = useRef(onDragStart);
-  const onDragEndRef = useRef(onDragEnd);
-  onDragStartRef.current = onDragStart;
-  onDragEndRef.current = onDragEnd;
+    // Caso 2: Ninguna tarjeta está en arrastre (en reposo)
+    // Se utiliza withTiming(0, { duration: 0 }) para forzar a 0 de forma atómica e instantánea
+    // cualquier resorte residual previo sobre la vista nativa al consolidar el orden, erradicando
+    // cualquier intercambio visual transitorio.
+    if (!isDragging.value || activeIndex.value === -1 || hoverIndex.value === -1) {
+      return {
+        transform: [{ translateY: withTiming(0, { duration: 0 }) }, { scale: 1 }],
+        zIndex: 1,
+        elevation: 2,
+        shadowOpacity: 0.08,
+        shadowRadius: 4,
+      };
+    }
 
-  // El gesto se crea una sola vez (ref). Los worklets leen los callbacks a
-  // través de los refs para evitar closures obsoletos.
-  const gestureRef = useRef<ReturnType<typeof Gesture.Simultaneous> | null>(null);
-  if (gestureRef.current === null) {
-    const longPress = Gesture.LongPress()
-      .minDuration(LONG_PRESS_MIN_DURATION)
-      .onStart(() => {
-        'worklet';
-        dragOffsetY.value = 0;
-        runOnJS(onDragStartRef.current)(id);
-      });
+    // Caso 3: Otra tarjeta se está arrastrando. Desplazamos esta vecina si corresponde
+    const from = activeIndex.value;
+    const to = hoverIndex.value;
+    let targetOffset = 0;
 
-    const pan = Gesture.Pan()
-      .onUpdate((e) => {
-        'worklet';
-        dragOffsetY.value = e.translationY;
-      })
-      .onEnd((e) => {
-        'worklet';
-        const finalY = e.absoluteY;
-        dragOffsetY.value = withSpring(0, DROP_SPRING);
-        runOnJS(onDragEndRef.current)(id, finalY);
-      })
-      .onFinalize((e) => {
-        'worklet';
-        dragOffsetY.value = withSpring(0, DROP_SPRING);
-        runOnJS(onDragEndRef.current)(id, e.absoluteY);
-      });
+    if (from < to) {
+      // Arrastre hacia ABAJO: los elementos entre from + 1 y to suben 1 ranura (-ITEM_PITCH)
+      if (index > from && index <= to) {
+        targetOffset = -ITEM_PITCH;
+      }
+    } else if (from > to) {
+      // Arrastre hacia ARRIBA: los elementos entre to y from - 1 bajan 1 ranura (+ITEM_PITCH)
+      if (index >= to && index < from) {
+        targetOffset = ITEM_PITCH;
+      }
+    }
 
-    gestureRef.current = Gesture.Simultaneous(longPress, pan);
-  }
+    return {
+      transform: [
+        { translateY: withSpring(targetOffset, SPRING_NEIGHBOR_CONFIG) },
+        { scale: 1 },
+      ],
+      zIndex: 1,
+      elevation: 2,
+      shadowOpacity: 0.08,
+      shadowRadius: 4,
+    };
+  });
+
+  // ── Gesto de Pan con activación tras LongPress (400ms) ────────────────────
+  // failOffsetX([-15, 15]): si el usuario desliza horizontalmente rápido,
+  // el gesto de arrastre falla de inmediato cediendo el control al swipe de eliminación.
+  const dragPan = Gesture.Pan()
+    .activateAfterLongPress(LONG_PRESS_DURATION)
+    .failOffsetX([-15, 15])
+    .onStart(() => {
+      'worklet';
+      activeId.value = item.id;
+      activeIndex.value = index;
+      hoverIndex.value = index;
+      translationY.value = 0;
+      isDragging.value = true;
+      isTouchDown.value = true;
+      runOnJS(onDragStart)(item.id);
+    })
+    .onUpdate((e) => {
+      'worklet';
+      if (!isDragging.value || activeId.value !== item.id) return;
+
+      translationY.value = e.translationY;
+
+      // Posición física del centro de la tarjeta en coordenadas de contenido
+      const currentContentY = index * ITEM_PITCH + e.translationY;
+      const targetSlot = Math.floor((currentContentY + ITEM_PITCH / 2) / ITEM_PITCH);
+      const clampedSlot = Math.max(0, Math.min(totalCountShared.value - 1, targetSlot));
+      if (hoverIndex.value !== clampedSlot) {
+        hoverIndex.value = clampedSlot;
+      }
+
+      // Detección perimetral para autoscroll
+      const relativeToScrollView = e.absoluteY - scrollViewScreenY.value;
+      if (relativeToScrollView < SCROLL_EDGE_ZONE) {
+        const factor = (SCROLL_EDGE_ZONE - relativeToScrollView) / SCROLL_EDGE_ZONE;
+        autoscrollSpeed.value = -Math.max(3, factor * MAX_AUTOSCROLL_SPEED);
+      } else if (relativeToScrollView > scrollViewHeight.value - SCROLL_EDGE_ZONE) {
+        const factor =
+          (relativeToScrollView - (scrollViewHeight.value - SCROLL_EDGE_ZONE)) / SCROLL_EDGE_ZONE;
+        autoscrollSpeed.value = Math.max(3, factor * MAX_AUTOSCROLL_SPEED);
+      } else {
+        autoscrollSpeed.value = 0;
+      }
+    })
+    .onEnd(() => {
+      'worklet';
+      if (!isDragging.value || activeId.value !== item.id) return;
+      autoscrollSpeed.value = 0;
+      isTouchDown.value = false;
+
+      const fromIdx = activeIndex.value;
+      const toIdx = hoverIndex.value;
+
+      if (fromIdx === toIdx) {
+        // Soltado en la misma posición original: regresar con spring y limpiar
+        translationY.value = withSpring(0, SPRING_DROP_CONFIG, () => {
+          'worklet';
+          isDragging.value = false;
+          activeId.value = -1;
+          activeIndex.value = -1;
+          hoverIndex.value = -1;
+          translationY.value = 0;
+          runOnJS(onDragCancel)();
+        });
+        return;
+      }
+
+      // Animación suave de aterrizaje en la ranura destino
+      const targetLandingOffset = (toIdx - fromIdx) * ITEM_PITCH;
+
+      translationY.value = withSpring(
+        targetLandingOffset,
+        SPRING_DROP_CONFIG,
+        (isFinished) => {
+          'worklet';
+          if (isFinished) {
+            // Notificar a JS para que reordene la lista en React.
+            // Los SharedValues se mantienen en sus posiciones finales (targetLandingOffset y ±ITEM_PITCH)
+            // hasta que useLayoutEffect en React monte el nuevo orden y los resetee atómicamente a 0.
+            runOnJS(onDragEnd)(fromIdx, toIdx);
+          } else {
+            isDragging.value = false;
+            activeId.value = -1;
+            activeIndex.value = -1;
+            hoverIndex.value = -1;
+            translationY.value = 0;
+            runOnJS(onDragCancel)();
+          }
+        }
+      );
+    })
+    .onFinalize((_event, success) => {
+      'worklet';
+      autoscrollSpeed.value = 0;
+      // Solo restaurar si el gesto falló o fue cancelado antes de completarse onEnd
+      if (!success && activeId.value === item.id) {
+        isTouchDown.value = false;
+        hoverIndex.value = activeIndex.value;
+        translationY.value = withSpring(0, SPRING_DROP_CONFIG, () => {
+          'worklet';
+          isDragging.value = false;
+          activeId.value = -1;
+          activeIndex.value = -1;
+          hoverIndex.value = -1;
+          translationY.value = 0;
+        });
+        runOnJS(onDragCancel)();
+      }
+    });
 
   return (
-    <GestureDetector gesture={gestureRef.current}>
-      <Animated.View
-        style={[styles.itemWrapper, draggedStyle]}
-        onLayout={(e) => onLayout(id, e)}
-      >
+    <GestureDetector gesture={dragPan}>
+      <Animated.View style={[styles.itemWrapper, animatedRowStyle]}>
         <SwipeableFavoriteCard
           ref={cardRef}
           item={item}
           onDelete={onDelete}
-          onOpen={() => onOpen(id)}
-          isDragging={isDragging}
+          onOpen={() => onOpen(item.id)}
+          isDragging={isThisCardDragging}
+          disabled={isAnyDragging}
         />
       </Animated.View>
     </GestureDetector>
   );
 });
 
-// ─── Componente principal ─────────────────────────────────────────────────────
+// ─── Componente Principal ─────────────────────────────────────────────────────
 
 export default function Favoritos() {
   const { favorites, isFavoritesLoaded, toggleFavorite, reorderFavorites } = useFavorites();
 
-  // ── Refs para controlar tarjetas con swipe abierto ────────────────────────
   const cardRefs = useRef<Map<number, SwipeableFavoriteCardHandle>>(new Map());
   const openCardId = useRef<number | null>(null);
 
-  // ── Productos remotos ────────────────────────────────────────────────────
+  // ── Productos remotos ──────────────────────────────────────────────────────
   const {
     data: rawProducts,
     loading: loadingApi,
@@ -176,20 +326,18 @@ export default function Favoritos() {
   } = useFetch<FakeStoreProduct[]>('https://fakestoreapi.com/products');
 
   const allAvailableProducts = useMemo(() => {
-    const remote = Array.isArray(rawProducts)
-      ? rawProducts.map(adaptFakeStoreProduct)
-      : [];
-    const map = new Map<number, Product>();
-    mockProducts.forEach((p) => map.set(p.id, p));
-    remote.forEach((p) => map.set(p.id, p));
-    return Array.from(map.values());
-  }, [rawProducts]);
+    if (Array.isArray(rawProducts)) {
+      return rawProducts.map(adaptFakeStoreProduct);
+    }
+    // Fallback a mockProducts solo en caso de falla de conexión real
+    if (errorApi) {
+      return mockProducts;
+    }
+    return [];
+  }, [rawProducts, errorApi]);
 
-  /**
-   * Lista base en el orden persistido (favorites[]).
-   * Es la fuente de verdad de qué productos están en favoritos.
-   */
-  const baseFavoriteProducts = useMemo(
+  // Lista canónica de productos favoritos en el orden persistido en favorites[]
+  const favoriteProducts = useMemo(
     () =>
       favorites
         .map((id) => allAvailableProducts.find((p) => p.id === id))
@@ -197,111 +345,110 @@ export default function Favoritos() {
     [allAvailableProducts, favorites]
   );
 
-  // ── Orden decidido por el usuario (solo IDs) ──────────────────────────────
-  /**
-   * `userOrderedIds` guarda el orden que el usuario estableció via DnD.
-   * Arranca vacío; se puebla cuando el usuario arrastra por primera vez.
-   *
-   * `orderedProducts` se deriva mediante useMemo:
-   *   1. Coloca primero los ítems según el orden del usuario (si existen).
-   *   2. Agrega al final cualquier favorito nuevo que no esté en userOrderedIds.
-   *   3. Omite automáticamente IDs que ya no estén en baseFavoriteProducts.
-   *
-   * Esta derivación pura evita necesitar setState en effects (cumple
-   * react-hooks/set-state-in-effect) y refs durante render.
-   */
-  const [userOrderedIds, setUserOrderedIds] = useState<number[]>([]);
+  // ── SharedValues centrales de Reanimated en UI Thread ─────────────────────
+  const activeId = useSharedValue<number>(-1);
+  const activeIndex = useSharedValue<number>(-1);
+  const hoverIndex = useSharedValue<number>(-1);
+  const translationY = useSharedValue<number>(0);
+  const isDragging = useSharedValue<boolean>(false);
+  const isTouchDown = useSharedValue<boolean>(false);
+  const autoscrollSpeed = useSharedValue<number>(0);
+  const scrollY = useSharedValue<number>(0);
+  const scrollViewHeight = useSharedValue<number>(0);
+  const scrollViewScreenY = useSharedValue<number>(0);
+  const totalCountShared = useSharedValue<number>(favoriteProducts.length);
 
-  const orderedProducts = useMemo(() => {
-    const baseMap = new Map(baseFavoriteProducts.map((p) => [p.id, p]));
-    // 1. Ítems en el orden del usuario que aún existan en base
-    const ordered = userOrderedIds
-      .map((id) => baseMap.get(id))
-      .filter((p): p is Product => p !== undefined);
-    // 2. Ítems de base que el usuario aún no ha ordenado (recién agregados)
-    const orderedSet = new Set(userOrderedIds);
-    const newItems = baseFavoriteProducts.filter((p) => !orderedSet.has(p.id));
-    return [...ordered, ...newItems];
-  }, [userOrderedIds, baseFavoriteProducts]);
+  // Mantener totalCount sincronizado en UI thread
+  useEffect(() => {
+    totalCountShared.value = favoriteProducts.length;
+  }, [favoriteProducts.length, totalCountShared]);
 
-  // ── Medición de layouts ───────────────────────────────────────────────────
-  const itemLayouts = useRef<Map<number, ItemLayout>>(new Map());
-
-  const handleItemLayout = useCallback(
-    (id: number, event: LayoutChangeEvent) => {
-      const { y, height } = event.nativeEvent.layout;
-      itemLayouts.current.set(id, { y, height });
-    },
-    []
-  );
-
-  // ── Drag & Drop — estado ──────────────────────────────────────────────────
-
+  // Estado JS para deshabilitar interacciones secundarias durante el drag
   const [draggingId, setDraggingId] = useState<number | null>(null);
-  const draggingIdRef = useRef<number | null>(null);
-  const scrollOffsetRef = useRef(0);
-  const scrollViewRef = useRef<ScrollView>(null);
 
-  // ── Callbacks del Drag & Drop ─────────────────────────────────────────────
+  // ── Referencia y Autoscroll del ScrollView ────────────────────────────────
+  const aref = useAnimatedRef<Animated.ScrollView>();
 
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      scrollY.value = event.contentOffset.y;
+    },
+  });
+
+  // Autoscroll continuo en UI Thread mediante useFrameCallback
+  useFrameCallback(() => {
+    'worklet';
+    if (!isDragging.value || autoscrollSpeed.value === 0) return;
+
+    const totalContentHeight = totalCountShared.value * ITEM_PITCH;
+    const maxScroll = Math.max(0, totalContentHeight - scrollViewHeight.value + 60);
+    const current = scrollY.value;
+    const next = Math.max(0, Math.min(maxScroll, current + autoscrollSpeed.value));
+
+    if (next !== current) {
+      const delta = next - current;
+      scrollY.value = next;
+      scrollTo(aref, 0, next, false);
+
+      // Compensar translationY para que la tarjeta se mantenga fija bajo el dedo
+      translationY.value += delta;
+
+      // Recalcular slot destino a medida que el contenido se desplaza
+      const currentContentY = activeIndex.value * ITEM_PITCH + translationY.value;
+      const targetSlot = Math.floor((currentContentY + ITEM_PITCH / 2) / ITEM_PITCH);
+      const clampedSlot = Math.max(0, Math.min(totalCountShared.value - 1, targetSlot));
+      if (hoverIndex.value !== clampedSlot) {
+        hoverIndex.value = clampedSlot;
+      }
+    }
+  });
+
+  // ── Callbacks de Drag & Drop invocados desde Worklets mediante runOnJS ────
   const handleDragStart = useCallback((id: number) => {
     if (openCardId.current !== null) {
       cardRefs.current.get(openCardId.current)?.close();
       openCardId.current = null;
     }
-    draggingIdRef.current = id;
     setDraggingId(id);
-    scrollViewRef.current?.setNativeProps?.({ scrollEnabled: false });
   }, []);
 
   const handleDragEnd = useCallback(
-    (id: number, absoluteY: number) => {
-      if (draggingIdRef.current !== id) return;
-      draggingIdRef.current = null;
+    (fromIndex: number, toIndex: number) => {
+      // 1. Resetear inmediatamente los SharedValues para que en UI thread
+      // todas las filas adopten transform: 0 plano (con withTiming duration 0),
+      // cancelando cualquier resorte activo de desplazamiento antes del reordenamiento.
+      isDragging.value = false;
+      isTouchDown.value = false;
+      activeId.value = -1;
+      activeIndex.value = -1;
+      hoverIndex.value = -1;
+      translationY.value = 0;
       setDraggingId(null);
-      scrollViewRef.current?.setNativeProps?.({ scrollEnabled: true });
 
-      setUserOrderedIds((prevUserIds) => {
-        // Construir la lista actual en el orden que ve el usuario
-        const baseMap = new Map(baseFavoriteProducts.map((p) => [p.id, p]));
-        const orderedNow: Product[] = [
-          ...prevUserIds.map((i) => baseMap.get(i)).filter((p): p is Product => !!p),
-          ...baseFavoriteProducts.filter((p) => !prevUserIds.includes(p.id)),
-        ];
+      if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return;
 
-        const dragIndex = orderedNow.findIndex((p) => p.id === id);
-        if (dragIndex === -1) return prevUserIds;
+      // 2. Reordenar el arreglo canónico de favoritos y persistir en FavoritesContext
+      const next = [...favorites];
+      if (fromIndex >= next.length || toIndex >= next.length) return;
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
 
-        const draggedLayout = itemLayouts.current.get(id);
-        const draggedH = draggedLayout?.height ?? 90;
-        const centerY = absoluteY + scrollOffsetRef.current - draggedH / 2;
-
-        let targetIndex = orderedNow.length - 1;
-        for (let i = 0; i < orderedNow.length; i++) {
-          const layout = itemLayouts.current.get(orderedNow[i].id);
-          if (!layout) continue;
-          if (centerY < layout.y + layout.height / 2) {
-            targetIndex = i;
-            break;
-          }
-        }
-
-        if (targetIndex === dragIndex) return prevUserIds;
-
-        const next = [...orderedNow];
-        const [moved] = next.splice(dragIndex, 1);
-        next.splice(targetIndex, 0, moved);
-
-        const nextIds = next.map((p) => p.id);
-        reorderFavorites(nextIds);
-        return nextIds;
-      });
+      reorderFavorites(next);
     },
-    [baseFavoriteProducts, reorderFavorites]
+    [favorites, reorderFavorites, activeId, activeIndex, hoverIndex, isDragging, isTouchDown, translationY]
   );
 
-  // ── Swipe-to-delete — callbacks ───────────────────────────────────────────
+  const handleDragCancel = useCallback(() => {
+    isDragging.value = false;
+    isTouchDown.value = false;
+    activeId.value = -1;
+    activeIndex.value = -1;
+    hoverIndex.value = -1;
+    translationY.value = 0;
+    setDraggingId(null);
+  }, [activeId, activeIndex, hoverIndex, isDragging, isTouchDown, translationY]);
 
+  // ── Swipe-to-delete callbacks ─────────────────────────────────────────────
   const handleCardOpen = useCallback((id: number) => {
     if (openCardId.current !== null && openCardId.current !== id) {
       cardRefs.current.get(openCardId.current)?.close();
@@ -319,24 +466,22 @@ export default function Favoritos() {
   );
 
   const makeCardRef = useCallback(
-    (id: number) =>
-      (handle: SwipeableFavoriteCardHandle | null) => {
-        if (handle) {
-          cardRefs.current.set(id, handle);
-        } else {
-          cardRefs.current.delete(id);
-        }
-      },
+    (id: number) => (handle: SwipeableFavoriteCardHandle | null) => {
+      if (handle) {
+        cardRefs.current.set(id, handle);
+      } else {
+        cardRefs.current.delete(id);
+      }
+    },
     []
   );
 
-  // ── UI ────────────────────────────────────────────────────────────────────
-
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <View style={styles.page}>
       <Text style={styles.titleScreen}>Mis Favoritos</Text>
 
-      {/* CASO 1: Carga inicial del almacenamiento local */}
+      {/* CASO 1: Carga inicial de AsyncStorage */}
       {!isFavoritesLoaded ? (
         <View style={styles.emptyContainer}>
           <ActivityIndicator size="large" color={colors.teal} />
@@ -348,8 +493,8 @@ export default function Favoritos() {
           <Text style={styles.title}>Favoritos</Text>
           <Text style={styles.subtitle}>Todavía no guardaste ningún producto.</Text>
         </View>
-      ) : loadingApi && baseFavoriteProducts.length === 0 ? (
-        /* CASO 3: Favoritos guardados, productos remotos cargando */
+      ) : loadingApi && favoriteProducts.length === 0 ? (
+        /* CASO 3: Sincronizando productos remotos */
         <View style={styles.emptyContainer}>
           <ActivityIndicator size="large" color={colors.teal} />
           <Text style={styles.loadingSubtitle}>
@@ -357,7 +502,7 @@ export default function Favoritos() {
             favoritos...
           </Text>
         </View>
-      ) : errorApi && baseFavoriteProducts.length === 0 ? (
+      ) : errorApi && favoriteProducts.length === 0 ? (
         /* CASO 4: Error de conexión */
         <View style={styles.emptyContainer}>
           <Text style={styles.title}>Error de conexión</Text>
@@ -369,15 +514,18 @@ export default function Favoritos() {
           </Pressable>
         </View>
       ) : (
-        /* CASO 5: Productos disponibles — lista con DnD */
-        <ScrollView
-          ref={scrollViewRef}
+        /* CASO 5: Lista de productos favoritos con Drag & Drop */
+        <Animated.ScrollView
+          ref={aref}
+          onScroll={scrollHandler}
+          scrollEventThrottle={16}
+          scrollEnabled={draggingId === null}
+          onLayout={(e) => {
+            scrollViewHeight.value = e.nativeEvent.layout.height;
+            scrollViewScreenY.value = e.nativeEvent.layout.y + 60; // 60 = page paddingTop
+          }}
           contentContainerStyle={styles.listContent}
           style={styles.list}
-          scrollEventThrottle={16}
-          onScroll={(e) => {
-            scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
-          }}
           onScrollBeginDrag={() => {
             if (openCardId.current !== null) {
               cardRefs.current.get(openCardId.current)?.close();
@@ -385,20 +533,32 @@ export default function Favoritos() {
             }
           }}
         >
-          {orderedProducts.map((item) => (
+          {favoriteProducts.map((item, index) => (
             <DraggableRow
               key={item.id}
               item={item}
-              isDragging={draggingId === item.id}
+              index={index}
+              activeId={activeId}
+              activeIndex={activeIndex}
+              hoverIndex={hoverIndex}
+              translationY={translationY}
+              isDragging={isDragging}
+              isTouchDown={isTouchDown}
+              autoscrollSpeed={autoscrollSpeed}
+              scrollViewScreenY={scrollViewScreenY}
+              scrollViewHeight={scrollViewHeight}
+              totalCountShared={totalCountShared}
               onDragStart={handleDragStart}
               onDragEnd={handleDragEnd}
+              onDragCancel={handleDragCancel}
               onDelete={handleDelete}
               onOpen={handleCardOpen}
-              onLayout={handleItemLayout}
               cardRef={makeCardRef(item.id)}
+              isThisCardDragging={draggingId === item.id}
+              isAnyDragging={draggingId !== null}
             />
           ))}
-        </ScrollView>
+        </Animated.ScrollView>
       )}
     </View>
   );
@@ -445,9 +605,10 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: 24,
     paddingBottom: 80,
-    gap: 12,
+    gap: CARD_GAP,
   },
   itemWrapper: {
+    height: CARD_HEIGHT,
     zIndex: 1,
   },
 });

@@ -6,7 +6,7 @@ export const mockProducts: Product[] = [
     nombre: "Remera Oversize Verde",
     precio: 25000,
     categoria: "Indumentaria",
-    imagen: require('@/assets/products/remera.jpg'), 
+    imagen: require('@/assets/products/remera.jpg'),
     descripcion: "Confeccionada en algodón 100% peinado de alto gramaje. Diseñada con un calce oversize urbano, cuello redondo con rib grueso y costuras reforzadas para garantizar una máxima durabilidad y un confort diario excepcional."
   },
   {

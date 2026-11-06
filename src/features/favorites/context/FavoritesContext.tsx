@@ -13,6 +13,8 @@ export interface FavoritesContextType {
   isFavoritesLoaded: boolean;
   toggleFavorite: (id: number) => Promise<void> | void;
   isFavorite: (id: number) => boolean;
+  /** Reemplaza el orden de los favoritos y lo persiste en AsyncStorage. */
+  reorderFavorites: (newOrder: number[]) => Promise<void>;
 }
 
 const FavoritesContext = createContext<FavoritesContextType | undefined>(undefined);
@@ -96,6 +98,40 @@ export function FavoritesProvider({ children }: FavoritesProviderProps) {
     return taskPromise;
   };
 
+  /**
+   * Reordena los favoritos con el nuevo orden dado y persiste en AsyncStorage.
+   * Solo deben pasarse IDs que ya estén en `favorites`; los IDs desconocidos se ignoran.
+   */
+  const reorderFavorites = (newOrder: number[]): Promise<void> => {
+    const taskPromise = writeQueueRef.current
+      .then(async () => {
+        // Validar que solo se incluyan IDs existentes
+        const currentSet = new Set(favoritesRef.current);
+        const sanitized = newOrder.filter((id) => currentSet.has(id));
+
+        // Añadir al final cualquier ID que esté en current pero que no haya llegado en newOrder
+        favoritesRef.current.forEach((id) => {
+          if (!sanitized.includes(id)) sanitized.push(id);
+        });
+
+        console.log(
+          '[FavoritesContext] reorderFavorites. Nuevo orden:',
+          sanitized
+        );
+
+        favoritesRef.current = sanitized;
+        setFavorites(sanitized);
+
+        await favoritesStorage.saveFavorites(sanitized);
+      })
+      .catch((error) => {
+        console.error('[FavoritesContext] Error al reordenar favoritos:', error);
+      });
+
+    writeQueueRef.current = taskPromise;
+    return taskPromise;
+  };
+
   const isFavorite = (id: number) => {
     const numericId = Number(id);
     return favorites.includes(numericId);
@@ -108,6 +144,7 @@ export function FavoritesProvider({ children }: FavoritesProviderProps) {
         isFavoritesLoaded,
         toggleFavorite,
         isFavorite,
+        reorderFavorites,
       }}
     >
       {children}

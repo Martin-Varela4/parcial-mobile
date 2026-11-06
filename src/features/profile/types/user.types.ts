@@ -1,0 +1,11 @@
+export interface UserProfile {
+  id: number | string;
+  name: string;
+  profileImage: string | null;
+}
+
+export const DEFAULT_USER: UserProfile = {
+  id: 1,
+  name: 'Usuario Demo',
+  profileImage: null,
+};

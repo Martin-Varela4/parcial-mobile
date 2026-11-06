@@ -1,8 +1,11 @@
 /**
  * SwipeableFavoriteCard
  *
- * Tarjeta de producto favorito con gesto de deslizamiento hacia la izquierda
- * para revelar una acción de eliminación.
+ * Tarjeta de producto favorito con:
+ *  - Gesto horizontal (Pan) para deslizar hacia la izquierda y revelar la acción
+ *    de eliminar (comportamiento original preservado).
+ *  - Pulsación prolongada + arrastre vertical gestionados desde el padre
+ *    (favoritos.tsx) a través de las props `isDragging` y `dragOffset`.
  *
  * Dependencias:
  *   - react-native-gesture-handler 2.32
@@ -58,6 +61,11 @@ interface SwipeableFavoriteCardProps {
   onDelete: (id: number) => void;
   /** Se invoca cuando el gesto abre esta tarjeta para que el padre cierre las demás. */
   onOpen: () => void;
+  /**
+   * `true` cuando esta tarjeta está siendo arrastrada desde el padre.
+   * Eleva la sombra y opacidad para feedback visual.
+   */
+  isDragging?: boolean;
 }
 
 // ─── Componente ───────────────────────────────────────────────────────────────
@@ -65,7 +73,7 @@ interface SwipeableFavoriteCardProps {
 const SwipeableFavoriteCard = forwardRef<
   SwipeableFavoriteCardHandle,
   SwipeableFavoriteCardProps
->(({ item, onDelete, onOpen }, ref) => {
+>(({ item, onDelete, onOpen, isDragging = false }, ref) => {
   const router = useRouter();
 
   /** Desplazamiento horizontal de la tarjeta (negativo = hacia la izquierda). */
@@ -82,13 +90,13 @@ const SwipeableFavoriteCard = forwardRef<
     },
   }));
 
-  // ── Gesto de paneo ────────────────────────────────────────────────────────
+  // ── Gesto de paneo horizontal (swipe-to-delete) ───────────────────────────
 
   const panGesture = Gesture.Pan()
     /**
      * El pan solo se activa cuando el movimiento horizontal supera 10 pt ANTES
      * de que el movimiento vertical supere 5 pt. Esto cede el control al
-     * FlatList cuando el usuario intenta desplazarse verticalmente.
+     * ScrollView cuando el usuario intenta desplazarse verticalmente.
      */
     .activeOffsetX([-10, 10])
     .failOffsetY([-5, 5])
@@ -116,10 +124,6 @@ const SwipeableFavoriteCard = forwardRef<
 
   // ── Estilos animados ──────────────────────────────────────────────────────
 
-  const cardAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value }],
-  }));
-
   /** Opacidad y escala del botón de eliminar según cuánto se ha deslizado. */
   const deleteActionStyle = useAnimatedStyle(() => {
     const progress = Math.abs(translateX.value) / DELETE_ZONE_WIDTH;
@@ -133,7 +137,19 @@ const SwipeableFavoriteCard = forwardRef<
     };
   });
 
-  // ── Eliminar con animación de salida ─────────────────────────────────────
+  /** Estilo de elevación cuando la tarjeta está siendo arrastrada. */
+  const dragElevationStyle = useAnimatedStyle(() => ({
+    opacity: isDragging ? 0.92 : 1,
+    shadowOpacity: isDragging ? 0.3 : 0.08,
+    shadowRadius: isDragging ? 12 : 4,
+    elevation: isDragging ? 8 : 2,
+    transform: [
+      { translateX: translateX.value },
+      { scale: isDragging ? 1.03 : 1 },
+    ],
+  }));
+
+  // ── Eliminar ──────────────────────────────────────────────────────────────
 
   const handleDelete = useCallback(() => {
     onDelete(item.id);
@@ -177,7 +193,7 @@ const SwipeableFavoriteCard = forwardRef<
 
       {/* Tarjeta deslizable */}
       <GestureDetector gesture={panGesture}>
-        <Animated.View style={[styles.card, cardAnimatedStyle]}>
+        <Animated.View style={[styles.card, dragElevationStyle]}>
           <Pressable
             style={styles.pressableArea}
             onPress={handlePress}
@@ -199,16 +215,12 @@ const SwipeableFavoriteCard = forwardRef<
               <Text style={styles.cardPrice}>{formatCurrency(item.precio)}</Text>
             </View>
 
-            {/* Botón de eliminación accesible siempre visible (ícono pequeño) */}
-            <Pressable
-              onPress={handleDelete}
-              style={styles.inlineDeleteBtn}
-              accessibilityLabel={`Eliminar ${item.nombre} de favoritos`}
-              accessibilityRole="button"
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Ionicons name="heart-dislike-outline" size={18} color={colors.muted} />
-            </Pressable>
+            {/* Indicador de arrastre — solo visible mientras se arrastra */}
+            {isDragging && (
+              <View style={styles.dragHandle}>
+                <Ionicons name="reorder-three-outline" size={20} color={colors.muted} />
+              </View>
+            )}
           </Pressable>
         </Animated.View>
       </GestureDetector>
@@ -257,6 +269,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.line,
     backgroundColor: colors.bgAlt,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
   },
   pressableArea: {
     flexDirection: 'row',
@@ -283,9 +299,9 @@ const styles = StyleSheet.create({
   cardName: { fontSize: 15, fontWeight: '700', color: colors.ink },
   cardCategory: { fontSize: 12, color: colors.teal, fontWeight: '600' },
   cardPrice: { fontSize: 15, fontWeight: '800', color: colors.amber, marginTop: 4 },
-  // ── Botón de eliminación inline ───────────────────────────────────────────
-  inlineDeleteBtn: {
-    paddingHorizontal: 12,
+  // ── Indicador de arrastre ─────────────────────────────────────────────────
+  dragHandle: {
+    paddingHorizontal: 10,
     paddingVertical: 8,
     alignSelf: 'stretch',
     alignItems: 'center',

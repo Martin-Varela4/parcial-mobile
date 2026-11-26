@@ -1,8 +1,11 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useCart } from '@/features/cart/context/CartContext';
 import { colors } from '@/theme/colors';
 
 export default function TabsLayout() {
+  const { totalItems } = useCart();
+
   return (
     <Tabs
       screenOptions={{
@@ -50,6 +53,27 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons
               name={focused ? 'heart' : 'heart-outline'}
+              size={size}
+              color={color}
+            />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
+        name="carrito"
+        options={{
+          title: 'Carrito',
+          tabBarBadge: totalItems > 0 ? totalItems : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: colors.teal,
+            color: colors.bg,
+            fontSize: 10,
+            fontWeight: '800',
+          },
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons
+              name={focused ? 'cart' : 'cart-outline'}
               size={size}
               color={color}
             />

@@ -10,6 +10,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { useCart } from '@/features/cart/context/CartContext';
 import { useFavorites } from '@/features/favorites/context/FavoritesContext';
 import { mockProducts } from '@/features/products/data/mockProducts';
 import { useFetch } from '@/features/products/hooks/useFetch';
@@ -41,6 +42,7 @@ export default function ProductDetail() {
   }, [remoteProduct, numericId]);
 
   const { toggleFavorite, isFavorite } = useFavorites();
+  const { addToCart } = useCart();
 
   if (loading && !producto) {
     return (
@@ -68,8 +70,23 @@ export default function ProductDetail() {
     toggleFavorite(producto.id);
   };
 
-  const handleBuy = () => {
-    Alert.alert("Compra Iniciada", `Añadiste ${producto.nombre} al carrito.`);
+  const handleBuy = async () => {
+    try {
+      await addToCart(producto);
+      Alert.alert(
+        '¡Producto agregado!',
+        `Añadiste "${producto.nombre}" al carrito.`,
+        [
+          { text: 'Seguir mirando', style: 'cancel' },
+          {
+            text: 'Ir al Carrito',
+            onPress: () => router.push('/(tabs)/carrito'),
+          },
+        ]
+      );
+    } catch {
+      Alert.alert('Error', 'No se pudo agregar el producto al carrito.');
+    }
   };
 
   const imageSource = typeof producto.imagen === 'string' ? { uri: producto.imagen } : producto.imagen;

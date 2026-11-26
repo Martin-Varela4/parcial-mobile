@@ -10,4 +10,5 @@ export const STORAGE_KEYS = {
   FAVORITES: '@mi-ecommerce/favorites:v1',
   USER_PROFILE: '@mi-ecommerce/profile:v1',
   USER_PREFERENCES: '@mi-ecommerce/preferences:v1',
+  CART: '@mi-ecommerce/cart:v1',
 } as const;

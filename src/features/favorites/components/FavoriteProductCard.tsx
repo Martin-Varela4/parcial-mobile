@@ -7,9 +7,9 @@
 
 import React from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { CategoryBadge, PriceText } from '@/components/ui';
 import { Product } from '@/features/products/types';
 import { colors } from '@/theme/colors';
-import { formatCurrency } from '@/utils/formatters';
 
 interface FavoriteProductCardProps {
   item: Product;
@@ -38,8 +38,8 @@ export function FavoriteProductCard({ item, onPress }: FavoriteProductCardProps)
         <Text style={styles.cardName} numberOfLines={1}>
           {item.nombre}
         </Text>
-        <Text style={styles.cardCategory}>{item.categoria}</Text>
-        <Text style={styles.cardPrice}>{formatCurrency(item.precio)}</Text>
+        <CategoryBadge category={item.categoria} variant="text" size="md" />
+        <PriceText price={item.precio} size="md" style={styles.cardPrice} />
       </View>
     </Pressable>
   );
@@ -81,15 +81,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.ink,
   },
-  cardCategory: {
-    fontSize: 12,
-    color: colors.teal,
-    fontWeight: '600',
-  },
   cardPrice: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: colors.amber,
     marginTop: 4,
   },
 });

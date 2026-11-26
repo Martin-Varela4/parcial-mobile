@@ -2,11 +2,10 @@ import { useMemo } from 'react';
 import {
   ActivityIndicator,
   FlatList,
-  Pressable,
   StyleSheet,
-  Text,
   View,
 } from 'react-native';
+import { AppButton, AppText } from '@/components/ui';
 import ProductCard from '@/features/products/components/ProductCard';
 import { useFetch } from '@/features/products/hooks/useFetch';
 import { FakeStoreProduct } from '@/features/products/types';
@@ -28,35 +27,37 @@ export default function Catalogo() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Catálogo</Text>
+      <AppText variant="screenTitle" style={styles.title}>
+        Catálogo
+      </AppText>
 
       {/* 1. Estado de Carga Inicial */}
       {loading && products.length === 0 ? (
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color={colors.teal} />
-          <Text style={styles.loadingText}>Cargando productos...</Text>
+          <AppText variant="subtitle">Cargando productos...</AppText>
         </View>
       ) : null}
 
       {/* 2. Estado de Error */}
       {error && products.length === 0 ? (
         <View style={styles.centerContainer}>
-          <Text style={styles.errorTitle}>Ocurrió un error</Text>
-          <Text style={styles.errorMessage}>{error}</Text>
-          <Pressable onPress={refetch} style={styles.retryButton}>
-            <Text style={styles.retryButtonText}>Reintentar</Text>
-          </Pressable>
+          <AppText variant="title">Ocurrió un error</AppText>
+          <AppText variant="subtitle" align="center">
+            {error}
+          </AppText>
+          <AppButton title="Reintentar" onPress={refetch} variant="primary" size="md" />
         </View>
       ) : null}
 
       {/* 3. Catálogo Vacío */}
       {!loading && !error && products.length === 0 ? (
         <View style={styles.centerContainer}>
-          <Text style={styles.emptyTitle}>Catálogo vacío</Text>
-          <Text style={styles.emptySubtitle}>No se encontraron productos disponibles.</Text>
-          <Pressable onPress={refetch} style={styles.retryButton}>
-            <Text style={styles.retryButtonText}>Actualizar</Text>
-          </Pressable>
+          <AppText variant="title">Catálogo vacío</AppText>
+          <AppText variant="subtitle" align="center">
+            No se encontraron productos disponibles.
+          </AppText>
+          <AppButton title="Actualizar" onPress={refetch} variant="primary" size="md" />
         </View>
       ) : null}
 
@@ -80,10 +81,6 @@ export default function Catalogo() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   title: {
-    fontSize: 32,
-    fontWeight: '900',
-    letterSpacing: -0.5,
-    color: colors.ink,
     paddingHorizontal: 20,
     paddingTop: 60,
     paddingBottom: 16,
@@ -95,43 +92,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 24,
     gap: 12,
-  },
-  loadingText: {
-    fontSize: 15,
-    color: colors.muted,
-    fontWeight: '600',
-  },
-  errorTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: colors.ink,
-  },
-  errorMessage: {
-    fontSize: 14,
-    color: colors.muted,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  emptyTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: colors.ink,
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    color: colors.muted,
-    textAlign: 'center',
-  },
-  retryButton: {
-    marginTop: 8,
-    backgroundColor: colors.teal,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 12,
-  },
-  retryButtonText: {
-    color: colors.bg,
-    fontWeight: '800',
-    fontSize: 14,
   },
 });

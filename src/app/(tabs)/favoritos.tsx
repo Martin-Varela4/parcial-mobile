@@ -27,6 +27,7 @@ import DraggableFlatList, {
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
+import { AppButton, AppText } from '@/components/ui';
 import { useFavorites } from '@/features/favorites/context/FavoritesContext';
 import { FavoriteProductCard } from '@/features/favorites/components/FavoriteProductCard';
 import { SwipeRow } from '@/features/favorites/components/SwipeRow';
@@ -149,39 +150,41 @@ export default function Favoritos() {
   // ── Render de Pantalla ────────────────────────────────────────────────────
   return (
     <View style={styles.page}>
-      <Text style={styles.titleScreen}>Mis Favoritos</Text>
+      <AppText variant="screenTitle" style={styles.titleScreen}>
+        Mis Favoritos
+      </AppText>
 
       {/* CASO 1: Carga inicial de AsyncStorage */}
       {!isFavoritesLoaded ? (
         <View style={styles.emptyContainer}>
           <ActivityIndicator size="large" color={colors.teal} />
-          <Text style={styles.loadingSubtitle}>Cargando favoritos guardados...</Text>
+          <AppText variant="subtitle">Cargando favoritos guardados...</AppText>
         </View>
       ) : favorites.length === 0 ? (
         /* CASO 2: Sin favoritos guardados */
         <View style={styles.emptyContainer}>
-          <Text style={styles.title}>Favoritos</Text>
-          <Text style={styles.subtitle}>Todavía no guardaste ningún producto.</Text>
+          <AppText variant="title">Favoritos</AppText>
+          <AppText variant="subtitle" align="center">
+            Todavía no guardaste ningún producto.
+          </AppText>
         </View>
       ) : loadingApi && favoriteProducts.length === 0 ? (
         /* CASO 3: Sincronizando productos remotos */
         <View style={styles.emptyContainer}>
           <ActivityIndicator size="large" color={colors.teal} />
-          <Text style={styles.loadingSubtitle}>
+          <AppText variant="subtitle" align="center">
             Sincronizando {favorites.length} producto{favorites.length === 1 ? '' : 's'} de tus
             favoritos...
-          </Text>
+          </AppText>
         </View>
       ) : errorApi && favoriteProducts.length === 0 ? (
         /* CASO 4: Error de conexión */
         <View style={styles.emptyContainer}>
-          <Text style={styles.title}>Error de conexión</Text>
-          <Text style={styles.subtitle}>
+          <AppText variant="title">Error de conexión</AppText>
+          <AppText variant="subtitle" align="center">
             No pudimos sincronizar tus favoritos guardados ({errorApi}).
-          </Text>
-          <Pressable onPress={refetch} style={styles.retryButton}>
-            <Text style={styles.retryButtonText}>Reintentar</Text>
-          </Pressable>
+          </AppText>
+          <AppButton title="Reintentar" onPress={refetch} variant="primary" size="sm" style={styles.retryButton} />
         </View>
       ) : (
         /* CASO 5: Lista reordenable DraggableFlatList (Semana 10 - TP N.º 7) */
@@ -223,20 +226,8 @@ const styles = StyleSheet.create({
     gap: 8,
     padding: 24,
   },
-  title: { fontSize: 20, fontWeight: '700', color: colors.ink },
-  subtitle: { fontSize: 14, color: colors.muted, textAlign: 'center' },
-  loadingSubtitle: { fontSize: 14, color: colors.muted, textAlign: 'center', marginTop: 8 },
   retryButton: {
     marginTop: 12,
-    backgroundColor: colors.teal,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 10,
-  },
-  retryButtonText: {
-    color: colors.bg,
-    fontWeight: '800',
-    fontSize: 14,
   },
   list: {
     flex: 1,

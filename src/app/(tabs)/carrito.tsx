@@ -4,10 +4,10 @@ import {
   Alert,
   FlatList,
   StyleSheet,
-  Text,
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { AppText } from '@/components/ui';
 import { useCart } from '@/features/cart/context/CartContext';
 import { CartItem } from '@/features/cart/components/CartItem';
 import { CartSummary } from '@/features/cart/components/CartSummary';
@@ -116,13 +116,17 @@ export default function CarritoScreen() {
 
   return (
     <View style={styles.page}>
-      <Text style={styles.titleScreen}>Mi Carrito</Text>
+      <AppText variant="screenTitle" style={styles.titleScreen}>
+        Mi Carrito
+      </AppText>
 
       {/* CASO 1: Carga inicial de AsyncStorage */}
       {!isCartLoaded ? (
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color={colors.teal} />
-          <Text style={styles.loadingSubtitle}>Cargando carrito de compras...</Text>
+          <AppText variant="subtitle" align="center">
+            Cargando carrito de compras...
+          </AppText>
         </View>
       ) : cart.length === 0 ? (
         /* CASO 2: Carrito vacío */
@@ -156,9 +160,6 @@ const styles = StyleSheet.create({
     paddingTop: 60,
   },
   titleScreen: {
-    fontSize: 24,
-    fontWeight: '900',
-    color: colors.ink,
     paddingHorizontal: 24,
     marginBottom: 16,
   },
@@ -168,11 +169,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 12,
     paddingHorizontal: 24,
-  },
-  loadingSubtitle: {
-    fontSize: 14,
-    color: colors.muted,
-    textAlign: 'center',
   },
   listContent: {
     paddingHorizontal: 24,

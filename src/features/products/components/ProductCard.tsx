@@ -1,10 +1,10 @@
-import { useRouter } from 'expo-router';
-import { GestureResponderEvent, Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { CategoryBadge, PriceText } from '@/components/ui';
 import { useFavorites } from '@/features/favorites/context/FavoritesContext';
 import { colors } from '@/theme/colors';
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import { GestureResponderEvent, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { ProductCardProps } from '../types';
-import { formatCurrency } from '@/utils/formatters';
 
 export default function ProductCard({
   id,
@@ -68,13 +68,11 @@ export default function ProductCard({
       </View>
 
       <View style={styles.info}>
-        <View style={styles.tag}>
-          <Text style={styles.tagText}>{categoria}</Text>
-        </View>
+        <CategoryBadge category={categoria} variant="pill" size="sm" />
         <Text style={styles.name} numberOfLines={2}>
           {nombre}
         </Text>
-        <Text style={styles.price}>{formatCurrency(precio)}</Text>
+        <PriceText price={precio} size="md" />
       </View>
     </Pressable>
   );
@@ -126,14 +124,5 @@ const styles = StyleSheet.create({
     opacity: 0.85,
   },
   info: { flex: 1, gap: 6 },
-  tag: {
-    alignSelf: 'flex-start',
-    backgroundColor: colors.teal,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 4,
-  },
-  tagText: { fontSize: 11, fontWeight: '700', color: colors.bg },
   name: { fontSize: 16, fontWeight: '700', color: colors.ink, lineHeight: 22 },
-  price: { fontSize: 15, fontWeight: '800', color: colors.amber },
 });

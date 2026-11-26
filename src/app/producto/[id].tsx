@@ -1,3 +1,11 @@
+import { useCart } from '@/features/cart/context/CartContext';
+import { useFavorites } from '@/features/favorites/context/FavoritesContext';
+import { mockProducts } from '@/features/products/data/mockProducts';
+import { useFetch } from '@/features/products/hooks/useFetch';
+import { FakeStoreProduct, Product } from '@/features/products/types';
+import { adaptFakeStoreProduct } from '@/features/products/utils/adapter';
+import { colors } from '@/theme/colors';
+import { AppButton, CategoryBadge, PriceText } from '@/components/ui';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo } from 'react';
 import {
@@ -10,14 +18,6 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useCart } from '@/features/cart/context/CartContext';
-import { useFavorites } from '@/features/favorites/context/FavoritesContext';
-import { mockProducts } from '@/features/products/data/mockProducts';
-import { useFetch } from '@/features/products/hooks/useFetch';
-import { FakeStoreProduct, Product } from '@/features/products/types';
-import { adaptFakeStoreProduct } from '@/features/products/utils/adapter';
-import { colors } from '@/theme/colors';
-import { formatCurrency } from '@/utils/formatters';
 
 export default function ProductDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -105,11 +105,9 @@ export default function ProductDetail() {
       </View>
 
       <View style={styles.sheet}>
-        <View style={styles.tag}>
-          <Text style={styles.tagText}>{producto.categoria}</Text>
-        </View>
+        <CategoryBadge category={producto.categoria} variant="pill" size="md" />
         <Text style={styles.name}>{producto.nombre}</Text>
-        <Text style={styles.price}>{formatCurrency(producto.precio)}</Text>
+        <PriceText price={producto.precio} size="lg" weight="bold" />
         <Text style={styles.description}>{producto.descripcion}</Text>
 
         <View style={styles.actionsRow}>
@@ -122,9 +120,13 @@ export default function ProductDetail() {
             </Text>
           </Pressable>
 
-          <Pressable onPress={handleBuy} style={styles.buyButton}>
-            <Text style={styles.buyButtonText}>Comprar Ahora</Text>
-          </Pressable>
+          <AppButton
+            title="Comprar Ahora"
+            onPress={handleBuy}
+            variant="primary"
+            size="lg"
+            style={styles.buyButton}
+          />
         </View>
       </View>
     </ScrollView>
@@ -171,16 +173,7 @@ const styles = StyleSheet.create({
     gap: 10,
     flex: 1,
   },
-  tag: {
-    alignSelf: 'flex-start',
-    backgroundColor: colors.teal,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 4,
-  },
-  tagText: { fontSize: 11, fontWeight: '700', color: colors.bg },
   name: { fontSize: 22, fontWeight: '900', color: colors.ink, letterSpacing: -0.5, lineHeight: 28 },
-  price: { fontSize: 20, fontWeight: '800', color: colors.amber },
   description: { fontSize: 15, lineHeight: 23, color: colors.muted, marginTop: 6, marginBottom: 20 },
   actionsRow: {
     flexDirection: 'row',
@@ -209,15 +202,5 @@ const styles = StyleSheet.create({
   },
   buyButton: {
     flex: 1.2,
-    backgroundColor: colors.teal,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 14,
-  },
-  buyButtonText: {
-    color: colors.bg,
-    fontWeight: '900',
-    fontSize: 15,
   },
 });

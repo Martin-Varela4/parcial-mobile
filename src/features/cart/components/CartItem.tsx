@@ -1,9 +1,9 @@
 import React from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Card, CategoryBadge, PriceText } from '@/components/ui';
 import { CartItem as CartItemType } from '../types/cart.types';
 import { colors } from '@/theme/colors';
-import { formatCurrency } from '@/utils/formatters';
 
 interface CartItemProps {
   item: CartItemType;
@@ -28,7 +28,7 @@ export function CartItem({
   const subtotal = product.precio * quantity;
 
   return (
-    <View style={styles.card}>
+    <Card padding={14} radius="md" border elevation style={styles.card}>
       {/* Contenedor principal: Imagen + Info de producto */}
       <View style={styles.topRow}>
         <Pressable
@@ -46,7 +46,12 @@ export function CartItem({
 
         <View style={styles.infoContainer}>
           <Pressable onPress={onPressProduct}>
-            <Text style={styles.category}>{product.categoria}</Text>
+            <CategoryBadge
+              category={product.categoria}
+              variant="text"
+              size="sm"
+              uppercase
+            />
             <Text style={styles.name} numberOfLines={2}>
               {product.nombre}
             </Text>
@@ -54,7 +59,12 @@ export function CartItem({
 
           <View style={styles.priceRow}>
             <Text style={styles.unitPriceLabel}>Unitario:</Text>
-            <Text style={styles.unitPrice}>{formatCurrency(product.precio)}</Text>
+            <PriceText
+              price={product.precio}
+              size="sm"
+              color={colors.ink}
+              weight="bold"
+            />
           </View>
         </View>
 
@@ -108,27 +118,17 @@ export function CartItem({
 
         <View style={styles.subtotalContainer}>
           <Text style={styles.subtotalLabel}>Subtotal</Text>
-          <Text style={styles.subtotalValue}>{formatCurrency(subtotal)}</Text>
+          <PriceText price={subtotal} size="md" weight="black" />
         </View>
       </View>
-    </View>
+    </Card>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.bgAlt,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: colors.line,
-    padding: 14,
     marginBottom: 12,
     gap: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
   },
   topRow: {
     flexDirection: 'row',
@@ -152,18 +152,12 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 3,
   },
-  category: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.teal,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
   name: {
     fontSize: 14,
     fontWeight: '700',
     color: colors.ink,
     lineHeight: 18,
+    marginTop: 2,
   },
   priceRow: {
     flexDirection: 'row',
@@ -174,11 +168,6 @@ const styles = StyleSheet.create({
   unitPriceLabel: {
     fontSize: 12,
     color: colors.muted,
-  },
-  unitPrice: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.ink,
   },
   deleteButton: {
     padding: 6,
@@ -235,10 +224,5 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.muted,
     textTransform: 'uppercase',
-  },
-  subtotalValue: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: colors.amber,
   },
 });
